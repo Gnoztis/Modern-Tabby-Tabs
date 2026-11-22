@@ -1,0 +1,443 @@
+/* =========================================================================
+   Modern Tabby Tabs — front-end styles.
+
+   Two independent settings are applied as classes on the group wrapper:
+
+     Colour scheme:   .mrt-theme-auto | .mrt-theme-light | .mrt-theme-dark | .mrt-theme-system
+     Panel style:     .mrt-panel-box  | .mrt-panel-flat  | .mrt-panel-left | .mrt-panel-soft
+   ========================================================================= */
+
+/* ---------- Shared scale ---------- */
+
+.responsive-tabs {
+	--tabby-radius:     6px;
+	--tabby-transition: 150ms ease;
+
+	margin: 0 0 1.5em;
+}
+
+/* ---------- Auto — inherit theme tokens (--wpsc-*) ---------- */
+
+.responsive-tabs {
+	--tabby-text:              var( --wpsc-text-light-color,  #6b6b6b );
+	--tabby-text-hover:        var( --wpsc-text-color,        #111 );
+	--tabby-text-active:       var( --wpsc-text-color,        #111 );
+
+	--tabby-accent:            var( --wpsc-primary-color,     #3276ff );
+	--tabby-border:            var( --wpsc-border-color,      #dcdcdc );
+	--tabby-soft-bg:           var( --wpsc-light-bg,          rgba( 0, 0, 0, .03 ) );
+
+	/* Actual background of the surface tabs sit on — used to mask the panel's
+	   top border underneath the active tab. */
+	--tabby-surface:           var( --wpsc-white-bg,          #fff );
+
+	--tabby-heading-bg:        transparent;
+	--tabby-heading-bg-hover:  var( --wpsc-light-bg,          rgba( 0, 0, 0, .04 ) );
+	--tabby-heading-text:      var( --wpsc-text-color,        #333 );
+	--tabby-heading-bd:        var( --wpsc-border-color,      #d5d5d5 );
+	--tabby-heading-active-bg: var( --wpsc-light-bg,          rgba( 0, 0, 0, .04 ) );
+	--tabby-heading-active-tx: var( --wpsc-text-color,        #111 );
+}
+
+/* ---------- Forced light ---------- */
+
+.responsive-tabs.mrt-theme-light {
+	--tabby-text:              #6b6b6b;
+	--tabby-text-hover:        #111;
+	--tabby-text-active:       #111;
+
+	--tabby-accent:            #3276ff;
+	--tabby-border:            #dcdcdc;
+	--tabby-soft-bg:           rgba( 0, 0, 0, .03 );
+	--tabby-surface:           var( --wpsc-white-bg, #fff );
+
+	--tabby-heading-bg:        transparent;
+	--tabby-heading-bg-hover:  rgba( 0, 0, 0, .04 );
+	--tabby-heading-text:      #333;
+	--tabby-heading-bd:        #d5d5d5;
+	--tabby-heading-active-bg: rgba( 0, 0, 0, .04 );
+	--tabby-heading-active-tx: #111;
+}
+
+/* ---------- Forced dark ---------- */
+
+.responsive-tabs.mrt-theme-dark {
+	--tabby-text:              #b6b6b6;
+	--tabby-text-hover:        #fff;
+	--tabby-text-active:       #fff;
+
+	--tabby-accent:            #8ac0f5;
+	--tabby-border:            #3a3a3a;
+	--tabby-soft-bg:           rgba( 255, 255, 255, .05 );
+	--tabby-surface:           var( --wpsc-white-bg, #1f1f1f );
+
+	--tabby-heading-bg:        transparent;
+	--tabby-heading-bg-hover:  rgba( 255, 255, 255, .06 );
+	--tabby-heading-text:      #e6e6e6;
+	--tabby-heading-bd:        #3a3a3a;
+	--tabby-heading-active-bg: rgba( 255, 255, 255, .06 );
+	--tabby-heading-active-tx: #fff;
+}
+
+/* ---------- System — follow OS appearance ---------- */
+
+@media ( prefers-color-scheme: dark ) {
+	.responsive-tabs.mrt-theme-system {
+		--tabby-text:              #b6b6b6;
+		--tabby-text-hover:        #fff;
+		--tabby-text-active:       #fff;
+
+		--tabby-accent:            #8ac0f5;
+		--tabby-border:            #3a3a3a;
+		--tabby-soft-bg:           rgba( 255, 255, 255, .05 );
+		--tabby-surface:           var( --wpsc-white-bg, #1f1f1f );
+
+		--tabby-heading-bg-hover:  rgba( 255, 255, 255, .06 );
+		--tabby-heading-text:      #e6e6e6;
+		--tabby-heading-bd:        #3a3a3a;
+		--tabby-heading-active-bg: rgba( 255, 255, 255, .06 );
+		--tabby-heading-active-tx: #fff;
+	}
+}
+
+/* ---------- Container ---------- */
+
+.responsive-tabs-wrapper {
+	clear: both;
+	margin-bottom: 1.25em;
+}
+
+.responsive-tabs-wrapper::before,
+.responsive-tabs-wrapper::after {
+	content: "";
+	display: table;
+}
+
+.responsive-tabs-wrapper::after {
+	clear: both;
+}
+
+/* =========================================================================
+   Tab list — shared structure (visible only on desktop)
+   ========================================================================= */
+
+.responsive-tabs .responsive-tabs__heading {
+	display: none;
+}
+
+.responsive-tabs .responsive-tabs__list {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.responsive-tabs .responsive-tabs__list__item {
+	position: relative;
+	background: transparent;
+	border: 1px solid transparent;
+	border-bottom: none;
+	border-radius: var(--tabby-radius) var(--tabby-radius) 0 0;
+	color: var(--tabby-text);
+	cursor: pointer;
+	font-size: 1em;
+	line-height: 1.3;
+	margin: 0 .15em 0 0;
+	padding: .6em 1em;
+	user-select: none;
+	white-space: nowrap;
+	transition:
+		color        var(--tabby-transition),
+		border-color var(--tabby-transition);
+}
+
+.responsive-tabs .responsive-tabs__list__item:first-child { margin-left: 0; }
+.responsive-tabs .responsive-tabs__list__item:last-child  { margin-right: 0; }
+
+.responsive-tabs .responsive-tabs__list__item:hover {
+	color: var(--tabby-text-hover);
+}
+
+.responsive-tabs .responsive-tabs__list__item:focus-visible {
+	outline: 2px solid var(--tabby-accent);
+	outline-offset: 2px;
+	border-radius: 2px;
+}
+
+.responsive-tabs .responsive-tabs__list__item--active,
+.responsive-tabs .responsive-tabs__list__item--active:hover {
+	color: var(--tabby-text-active);
+	font-weight: 600;
+}
+
+.responsive-tabs .responsive-tabs__list__item [class*="fa-"],
+.responsive-tabs .responsive-tabs__list__item .fa {
+	margin-right: .5em;
+	line-height: 1;
+}
+
+/* ---------- Panel — shared structural bits ---------- */
+
+.responsive-tabs .responsive-tabs__panel {
+	margin: 0;
+	word-wrap: break-word;
+}
+
+.responsive-tabs .responsive-tabs__panel:focus-visible {
+	outline: 2px solid var(--tabby-accent);
+	outline-offset: 4px;
+	border-radius: 2px;
+}
+
+.responsive-tabs .responsive-tabs__panel[hidden] {
+	display: none !important;
+}
+
+/* =========================================================================
+   Desktop ( ≥ 768px ) — panel style variants
+   ========================================================================= */
+
+@media ( min-width: 768px ) {
+
+	/* ---------- Box (default) ---------- */
+	.responsive-tabs.mrt-panel-box .responsive-tabs__list {
+		padding: 0;
+		margin: 0;
+		border-bottom: 0;
+	}
+
+	.responsive-tabs.mrt-panel-box .responsive-tabs__list__item {
+		background: transparent;
+		border: 1px solid transparent;
+		border-radius: var(--tabby-radius) var(--tabby-radius) 0 0;
+		margin: 0 .15em -1px 0;
+		padding: .6em 1em;
+		position: relative;
+		z-index: 1;
+	}
+
+	.responsive-tabs.mrt-panel-box .responsive-tabs__list__item:first-child { margin-left: 0; }
+	.responsive-tabs.mrt-panel-box .responsive-tabs__list__item:last-child  { margin-right: 0; }
+
+	.responsive-tabs.mrt-panel-box .responsive-tabs__list__item:hover {
+		background: transparent;
+		border: 1px solid var(--tabby-border);
+		border-bottom: none;
+		color: var(--tabby-text-hover);
+	}
+
+	.responsive-tabs.mrt-panel-box .responsive-tabs__list__item--active,
+	.responsive-tabs.mrt-panel-box .responsive-tabs__list__item--active:hover {
+		background: transparent;
+		border: 1px solid var(--tabby-border);
+		border-bottom: 1px solid var(--tabby-surface);
+		color: var(--tabby-text-active);
+		font-weight: 600;
+		z-index: 2;
+	}
+
+	.responsive-tabs.mrt-panel-box .responsive-tabs__panel {
+		background: transparent;
+		border: 1px solid var(--tabby-border);
+		border-radius: 0 0 var(--tabby-radius) var(--tabby-radius);
+		padding: 1.25em;
+	}
+
+	/* ---------- Flat ---------- */
+	.responsive-tabs.mrt-panel-flat .responsive-tabs__list {
+		border-bottom: 1px solid var(--tabby-border);
+	}
+
+	.responsive-tabs.mrt-panel-flat .responsive-tabs__list__item {
+		border: 0;
+		border-bottom: 2px solid transparent;
+		border-radius: 0;
+		margin: 0 0 -1px 0;
+	}
+
+	.responsive-tabs.mrt-panel-flat .responsive-tabs__list__item--active,
+	.responsive-tabs.mrt-panel-flat .responsive-tabs__list__item--active:hover {
+		border-bottom-color: var(--tabby-accent);
+		background: transparent;
+	}
+
+	.responsive-tabs.mrt-panel-flat .responsive-tabs__panel {
+		background: transparent;
+		border: 0;
+		border-radius: 0;
+		padding: 1em 0 0;
+	}
+
+	/* ---------- Left accent bar ---------- */
+	.responsive-tabs.mrt-panel-left .responsive-tabs__list {
+		border-bottom: 1px solid var(--tabby-border);
+	}
+
+	.responsive-tabs.mrt-panel-left .responsive-tabs__list__item {
+		border: 0;
+		border-bottom: 2px solid transparent;
+		border-radius: 0;
+		margin: 0 0 -1px 0;
+	}
+
+	.responsive-tabs.mrt-panel-left .responsive-tabs__list__item--active,
+	.responsive-tabs.mrt-panel-left .responsive-tabs__list__item--active:hover {
+		border-bottom-color: var(--tabby-accent);
+		background: transparent;
+	}
+
+	.responsive-tabs.mrt-panel-left .responsive-tabs__panel {
+		background: transparent;
+		border: 0;
+		border-left: 3px solid var(--tabby-accent);
+		border-radius: 0;
+		padding: .25em 0 .25em 1.25em;
+	}
+
+	/* ---------- Soft tinted background ---------- */
+	.responsive-tabs.mrt-panel-soft .responsive-tabs__list {
+		border-bottom: 1px solid var(--tabby-border);
+	}
+
+	.responsive-tabs.mrt-panel-soft .responsive-tabs__list__item {
+		border: 0;
+		border-bottom: 2px solid transparent;
+		border-radius: 0;
+		margin: 0 0 -1px 0;
+	}
+
+	.responsive-tabs.mrt-panel-soft .responsive-tabs__list__item--active,
+	.responsive-tabs.mrt-panel-soft .responsive-tabs__list__item--active:hover {
+		border-bottom-color: var(--tabby-accent);
+		background: transparent;
+	}
+
+	.responsive-tabs.mrt-panel-soft .responsive-tabs__panel {
+		background: var(--tabby-soft-bg);
+		border: 0;
+		border-radius: var(--tabby-radius);
+		padding: 1.25em;
+	}
+}
+
+/* =========================================================================
+   Mobile ( ≤ 767px ) — accordion view
+   Heading rows look like buttons, panels are simple bordered sections.
+   ========================================================================= */
+
+@media ( max-width: 767px ) {
+
+	/* The desktop tab list is replaced by headings. */
+	.responsive-tabs .responsive-tabs__list {
+		display: none;
+	}
+
+	/* --- Heading rows: reset the theme's h1–h6 styling --- */
+	.responsive-tabs .responsive-tabs__heading {
+		display: block;
+		position: relative;
+		background: var(--tabby-heading-bg);
+		border: 1px solid var(--tabby-heading-bd);
+		border-radius: 0;
+		color: var(--tabby-heading-text);
+		cursor: pointer;
+		user-select: none;
+
+		/* Reset inherited heading typography. */
+		font-family: inherit;
+		font-size: 1rem;
+		font-style: normal;
+		font-weight: 600;
+		line-height: 1.35;
+		letter-spacing: normal;
+		text-transform: none;
+		text-decoration: none;
+
+		margin: 0;
+		padding: .9em 2.5em .9em 1em;
+
+		transition:
+			background-color var(--tabby-transition),
+			color            var(--tabby-transition);
+	}
+
+	/* Collapse adjacent borders so headings and panels share one line. */
+	.responsive-tabs .responsive-tabs__heading {
+		margin-top: -1px;
+	}
+
+	.responsive-tabs .responsive-tabs__list + .responsive-tabs__heading {
+		margin-top: 0;
+	}
+
+	/* --- Heading states --- */
+
+	.responsive-tabs .responsive-tabs__heading:hover {
+		background: var(--tabby-heading-bg-hover);
+	}
+
+	.responsive-tabs .responsive-tabs__heading:focus-visible {
+		outline: 2px solid var(--tabby-accent);
+		outline-offset: -2px;
+	}
+
+	.responsive-tabs .responsive-tabs__heading--active {
+		background: var(--tabby-heading-active-bg);
+		color: var(--tabby-heading-active-tx);
+	}
+
+	/* Chevron indicator. */
+	.responsive-tabs .responsive-tabs__heading::after {
+		content: "";
+		position: absolute;
+		right: 1em;
+		top: 50%;
+		width: 0;
+		height: 0;
+		border-left:  .35em solid transparent;
+		border-right: .35em solid transparent;
+		border-top:   .4em  solid currentColor;
+		transform: translateY( -50% );
+		transition: transform var(--tabby-transition);
+	}
+
+	.responsive-tabs .responsive-tabs__heading--active::after {
+		border-top:    0;
+		border-bottom: .4em solid currentColor;
+	}
+
+	/* --- Panels: simple bordered section, no top border (the heading's
+	       bottom border serves as the separator). --- */
+	.responsive-tabs .responsive-tabs__panel,
+	.responsive-tabs.mrt-panel-box  .responsive-tabs__panel,
+	.responsive-tabs.mrt-panel-flat .responsive-tabs__panel,
+	.responsive-tabs.mrt-panel-left .responsive-tabs__panel,
+	.responsive-tabs.mrt-panel-soft .responsive-tabs__panel {
+		background: transparent;
+		border: 1px solid var(--tabby-heading-bd);
+		border-top: 0;
+		border-radius: 0;
+		margin: 0;
+		padding: 1em 1em 1.25em;
+	}
+
+	/* Last panel needs a bottom border, the heading already provides the top. */
+	.responsive-tabs .responsive-tabs__panel {
+		border-bottom: 1px solid var(--tabby-heading-bd);
+	}
+}
+
+/* =========================================================================
+   Motion preferences
+   ========================================================================= */
+
+@media ( prefers-reduced-motion: reduce ) {
+	.responsive-tabs *,
+	.responsive-tabs *::before,
+	.responsive-tabs *::after {
+		transition: none !important;
+		animation:  none !important;
+	}
+}

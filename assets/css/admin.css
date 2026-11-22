@@ -1,0 +1,37 @@
+/**
+ * Modern Tabby Tabs — admin styles.
+ * Only layout tweaks; colours inherit from WordPress so every colour scheme,
+ * including dark ones, works out of the box.
+ */
+
+.tabby-admin__grid {
+	display: grid;
+	grid-template-columns: repeat( auto-fit, minmax( 380px, 1fr ) );
+	gap: 1.5rem;
+	margin: 1.5em 0;
+}
+
+.tabby-admin .card {
+	max-width: none;
+	margin: 0;
+	padding: 1.5em 1.75em;
+}
+
+.tabby-admin .card h2 {
+	margin-top: 0;
+	padding-bottom: .5em;
+	border-bottom: 1px solid rgba( 128, 128, 128, .25 );
+}
+
+.tabby-admin .card .description {
+	color: inherit;
+	opacity: .8;
+}
+
+.tabby-admin pre {
+	background: rgba( 128, 128, 128, .1 );
+	border-radius: 4px;
+	font-size: 13px;
+	overflow-x: auto;
+	padding: 1em 1.25em;
+}

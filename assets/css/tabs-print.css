@@ -1,0 +1,28 @@
+@media print {
+	.noprint,
+	.responsive-tabs .responsive-tabs__list {
+		display: none !important;
+	}
+
+	.responsive-tabs .responsive-tabs__heading {
+		display: block !important;
+		background: none !important;
+		border: none !important;
+		color: #000 !important;
+		font-size: 18pt !important;
+		font-weight: 700 !important;
+		margin: 0 !important;
+		padding: 1em 0 0 !important;
+	}
+
+	.responsive-tabs .responsive-tabs__heading::after {
+		display: none !important;
+	}
+
+	.responsive-tabs .responsive-tabs__panel {
+		display: block !important;
+		background: none !important;
+		border: none !important;
+		padding: 0 !important;
+	}
+}
