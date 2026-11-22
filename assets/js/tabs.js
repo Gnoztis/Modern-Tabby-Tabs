@@ -25,7 +25,8 @@
 		panel: 'tabcontent'
 	};
 
-	var DEBUG = true;
+	// Debug logging is opt-in: set window.MTT_DEBUG = true in the console.
+	var DEBUG = window.MTT_DEBUG === true;
 
 	function log() {
 		if ( DEBUG && window.console && console.log ) {
@@ -45,6 +46,58 @@
 
 	function hasClass( el, name ) {
 		return el.classList && el.classList.contains( name );
+	}
+
+	/**
+	 * Whether the user asked the system to reduce motion.
+	 */
+	function prefersReducedMotion() {
+		return !! (
+			window.matchMedia &&
+			window.matchMedia( '(prefers-reduced-motion: reduce)' ).matches
+		);
+	}
+
+	/**
+	 * Smooth scrolling unless reduced motion is requested.
+	 */
+	function scrollBehavior() {
+		return prefersReducedMotion() ? 'auto' : 'smooth';
+	}
+
+	/**
+	 * Scrolls the page so a document coordinate sits at the viewport top.
+	 */
+	function scrollPageTo( top ) {
+		window.scrollTo( {
+			top: Math.max( 0, top ),
+			behavior: scrollBehavior()
+		} );
+	}
+
+	/**
+	 * Brings the start of the active panel back into view.
+	 *
+	 * Switching from a tall panel to a short one leaves the page scrolled past
+	 * the new, shorter panel. Only in that case (the panel top is above the
+	 * viewport) is the page moved; an already visible panel is left alone.
+	 * The anchor is the tab strip on desktop and the tab heading on mobile
+	 * (where the strip is hidden), so the active tab stays visible too.
+	 */
+	function revealPanelStart( panel, tabList, heading ) {
+		if ( panel.getBoundingClientRect().top >= 0 ) {
+			return;
+		}
+
+		var anchor = isMobile() ? heading : tabList;
+		scrollPageTo( window.pageYOffset + anchor.getBoundingClientRect().top );
+	}
+
+	/**
+	 * Moves focus into the freshly activated panel without a second scroll.
+	 */
+	function focusPanel( panel ) {
+		panel.focus( { preventScroll: true } );
 	}
 
 	/* ------------------------------------------------------------------ */
@@ -198,30 +251,33 @@
 		item.innerHTML = heading.innerHTML;
 		item.classList.toggle( C.listItemActive, active );
 
-		var activate = function () {
-			selectTab( headings, panels, tabList, wrapper, i );
+		var activate = function ( fromKeyboard ) {
+			selectTab( headings, panels, tabList, wrapper, i, fromKeyboard === true );
 		};
 
-		item.addEventListener( 'click', activate );
+		var toggleHeading = function ( fromKeyboard ) {
+			if ( isMobile() && hasClass( panel, C.panelActive ) ) {
+				collapsePanel( panel, heading );
+			} else {
+				activate( fromKeyboard );
+			}
+		};
+
+		item.addEventListener( 'click', function () {
+			activate( false );
+		} );
 		item.addEventListener( 'keydown', function ( e ) {
 			onTabKey( e, tabList, i, activate );
 		} );
 
 		heading.addEventListener( 'click', function () {
-			if ( isMobile() && hasClass( panel, C.panelActive ) ) {
-				panel.classList.remove( C.panelActive );
-				heading.classList.remove( C.headingActive );
-				panel.hidden = true;
-				panel.setAttribute( 'aria-hidden', 'true' );
-			} else {
-				activate();
-			}
+			toggleHeading( false );
 		} );
 
 		heading.addEventListener( 'keydown', function ( e ) {
 			if ( e.key === 'Enter' || e.key === ' ' ) {
 				e.preventDefault();
-				heading.click();
+				toggleHeading( true );
 			}
 		} );
 
@@ -233,7 +289,7 @@
 			case 'Enter':
 			case ' ':
 				event.preventDefault();
-				activate();
+				activate( true );
 				break;
 
 			case 'ArrowRight':
@@ -268,7 +324,26 @@
 		items[ next ].focus();
 	}
 
-	function selectTab( headings, panels, tabList, wrapper, index ) {
+	/**
+	 * Collapses an accordion section on mobile.
+	 *
+	 * The heading can be above the viewport when the section above it is
+	 * longer than the screen; recover it so the user is not left in empty
+	 * space after the panel disappears.
+	 */
+	function collapsePanel( panel, heading ) {
+		panel.classList.remove( C.panelActive );
+		heading.classList.remove( C.headingActive );
+		panel.hidden = true;
+		panel.setAttribute( 'aria-hidden', 'true' );
+
+		var top = heading.getBoundingClientRect().top;
+		if ( top < 0 ) {
+			scrollPageTo( window.pageYOffset + top );
+		}
+	}
+
+	function selectTab( headings, panels, tabList, wrapper, index, fromKeyboard ) {
 		wrapper.style.height = wrapper.offsetHeight + 'px';
 
 		for ( var i = 0; i < panels.length; i++ ) {
@@ -285,6 +360,15 @@
 			items[ k ].classList.toggle( C.listItemActive, isActive );
 			items[ k ].setAttribute( 'aria-selected', isActive ? 'true' : 'false' );
 			items[ k ].setAttribute( 'tabindex', isActive ? '0' : '-1' );
+		}
+
+		revealPanelStart( panels[ index ], tabList, headings[ index ] );
+
+		// Keyboard activation moves focus into the new content, so a screen
+		// reader and the Tab key continue inside the panel. A pointer click
+		// keeps focus where the browser put it.
+		if ( fromKeyboard === true ) {
+			focusPanel( panels[ index ] );
 		}
 
 		window.requestAnimationFrame( function () {

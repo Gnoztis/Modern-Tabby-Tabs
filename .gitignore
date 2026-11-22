@@ -1,0 +1,17 @@
+# OS and editor files
+.DS_Store
+Thumbs.db
+*.swp
+
+# Dependencies are never shipped with the plugin
+node_modules/
+vendor/
+
+# Archives and logs
+*.zip
+*.tar.gz
+*.log
+
+# IDE
+.idea/
+.vscode/

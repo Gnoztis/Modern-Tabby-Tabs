@@ -1,14 +1,17 @@
 <?php
 /**
  * Plugin Name:       Modern Tabby Tabs
- * Description:       Responsive tabs and accordion via shortcodes. Vanilla JS, dark-mode ready.
- * Version:           1.3.3
- * Requires at least: 6.5
+ * Description:       Адаптивные табы и аккордеон на шорткодах. Чистый JS, поддержка тёмной темы.
+ * Version:           1.4.0
+ * Requires at least: 7.0
  * Requires PHP:      8.4
+ * Tested up to:      7.1
+ * Author:            Gnostis
+ * Author URI:        https://github.com/Gnoztis
  * License:           GPL-2.0-or-later
  * License URI:       https://www.gnu.org/licenses/gpl-2.0.html
  * Text Domain:       modern-tabby-tabs
- * Domain Path:       /languages
+ * Update URI:        https://github.com/Gnoztis/Modern-Tabby-Tabs
  *
  * @package ModernTabby
  */
@@ -21,7 +24,13 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-const VERSION = '1.3.3';
+/*
+ * Plugin constants. The version is declared once here and repeated only in the
+ * plugin header above; both must match the release tag.
+ */
+define( 'MTT_VERSION', '1.4.0' );
+define( 'MTT_PLUGIN_FILE', __FILE__ );
+define( 'MTT_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 
 /**
  * Font Awesome icon style supported by the plugin.
@@ -53,11 +62,11 @@ enum FaStyle: string {
 	/** @return array<string,string> */
 	public static function options(): array {
 		return [
-			self::Regular->value => __( 'Regular', 'modern-tabby-tabs' ),
-			self::Solid->value   => __( 'Solid',   'modern-tabby-tabs' ),
-			self::Light->value   => __( 'Light',   'modern-tabby-tabs' ),
-			self::Thin->value    => __( 'Thin',    'modern-tabby-tabs' ),
-			self::Duotone->value => __( 'Duotone', 'modern-tabby-tabs' ),
+			self::Regular->value => __( 'Обычные', 'modern-tabby-tabs' ),
+			self::Solid->value   => __( 'Залитые', 'modern-tabby-tabs' ),
+			self::Light->value   => __( 'Тонкие', 'modern-tabby-tabs' ),
+			self::Thin->value    => __( 'Сверхтонкие', 'modern-tabby-tabs' ),
+			self::Duotone->value => __( 'Двухцветные', 'modern-tabby-tabs' ),
 		];
 	}
 }
@@ -115,10 +124,10 @@ enum ThemeMode: string {
 	/** @return array<string,string> */
 	public static function options(): array {
 		return [
-			self::Auto->value   => __( 'Auto — follow the active site theme', 'modern-tabby-tabs' ),
-			self::Light->value  => __( 'Always light',                        'modern-tabby-tabs' ),
-			self::Dark->value   => __( 'Always dark',                         'modern-tabby-tabs' ),
-			self::System->value => __( 'System — follow OS appearance',       'modern-tabby-tabs' ),
+			self::Auto->value   => __( 'Авто — как в активной теме сайта', 'modern-tabby-tabs' ),
+			self::Light->value  => __( 'Всегда светлая',                   'modern-tabby-tabs' ),
+			self::Dark->value   => __( 'Всегда тёмная',                    'modern-tabby-tabs' ),
+			self::System->value => __( 'Системная — как в настройках ОС',  'modern-tabby-tabs' ),
 		];
 	}
 }
@@ -140,8 +149,8 @@ enum CssMode: string {
 	/** @return array<string,string> */
 	public static function options(): array {
 		return [
-			self::File->value   => __( 'External file — cacheable, best for production', 'modern-tabby-tabs' ),
-			self::Inline->value => __( 'Inline — embedded in <head>, no extra request',  'modern-tabby-tabs' ),
+			self::File->value   => __( 'Отдельный файл — кэшируется, рекомендуется для сайта', 'modern-tabby-tabs' ),
+			self::Inline->value => __( 'Инлайн — внутри <head>, без отдельного запроса',       'modern-tabby-tabs' ),
 		];
 	}
 }
@@ -172,10 +181,10 @@ enum PanelStyle: string {
 	/** @return array<string,string> */
 	public static function options(): array {
 		return [
-			self::Box->value  => __( 'Bordered box (default, classic card look)',    'modern-tabby-tabs' ),
-			self::Flat->value => __( 'Flat — no background, no border',              'modern-tabby-tabs' ),
-			self::Left->value => __( 'Left accent bar',                              'modern-tabby-tabs' ),
-			self::Soft->value => __( 'Soft tinted background, no border',            'modern-tabby-tabs' ),
+			self::Box->value  => __( 'Рамка (по умолчанию, классическая карточка)',     'modern-tabby-tabs' ),
+			self::Flat->value => __( 'Плоский — без фона и рамки',                       'modern-tabby-tabs' ),
+			self::Left->value => __( 'Акцентная полоса слева',                           'modern-tabby-tabs' ),
+			self::Soft->value => __( 'Мягкий фон без рамки',                             'modern-tabby-tabs' ),
 		];
 	}
 }
@@ -213,7 +222,6 @@ final class Plugin {
 	 * ------------------------------------------------------------------- */
 
 	private function __construct() {
-		add_action( 'init',               [ $this, 'load_textdomain' ] );
 		add_action( 'wp_enqueue_scripts', [ $this, 'register_assets' ] );
 		add_action( 'wp_enqueue_scripts', [ $this, 'maybe_enqueue' ], 20 );
 
@@ -228,14 +236,6 @@ final class Plugin {
 		);
 	}
 
-	public function load_textdomain(): void {
-		load_plugin_textdomain(
-			'modern-tabby-tabs',
-			false,
-			dirname( plugin_basename( __FILE__ ) ) . '/languages'
-		);
-	}
-
 	/* ---------------------------------------------------------------------
 	 *  URLs & asset versions
 	 * ------------------------------------------------------------------- */
@@ -247,11 +247,12 @@ final class Plugin {
 	/**
 	 * Cache-busting version for a bundled asset.
 	 *
-	 * Bumping VERSION invalidates browser and CDN caches for every installation
-	 * at once. The plugin version is the only signal — no mtime, no file lookups.
+	 * Bumping MTT_VERSION invalidates browser and CDN caches for every
+	 * installation at once. The plugin version is the only signal — no mtime,
+	 * no file lookups.
 	 */
 	private static function asset_version( string $relative_path = '' ): string {
-		return VERSION;
+		return MTT_VERSION;
 	}
 
 	/* ---------------------------------------------------------------------
@@ -338,7 +339,7 @@ final class Plugin {
 		if ( ! is_readable( $file ) ) {
 			return '';
 		}
-		$contents = file_get_contents( $file );
+		$contents = file_get_contents( $file ); // phpcs:ignore -- plugin-internal path built from __DIR__.
 		return $contents === false ? '' : $contents;
 	}
 
@@ -451,8 +452,9 @@ final class Plugin {
 	 * ------------------------------------------------------------------- */
 
 	private function resolve_active_tab( string $title, string $open, int $index ): bool {
-		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- read-only URL param.
-		$target_raw = $_GET['target'] ?? null;
+		// Read-only filter parameter: it changes no state, so it needs no nonce.
+		// The value is unslashed and slugged before it is compared below.
+		$target_raw = $_GET['target'] ?? null; // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- read-only parameter, sanitized below.
 
 		if ( is_string( $target_raw ) && $target_raw !== '' ) {
 			$target  = sanitize_title_with_dashes( wp_unslash( $target_raw ) );
@@ -530,7 +532,7 @@ final class Plugin {
 	 */
 	public function action_links( array $links ): array {
 		$url   = admin_url( 'options-general.php?page=mrt-settings' );
-		$label = esc_html__( 'Settings', 'modern-tabby-tabs' );
+		$label = esc_html__( 'Настройки', 'modern-tabby-tabs' );
 
 		array_unshift(
 			$links,
@@ -566,7 +568,12 @@ final class Plugin {
  *  Boot
  * ---------------------------------------------------------------------- */
 
-require_once __DIR__ . '/includes/admin.php';
+require_once MTT_PLUGIN_DIR . 'includes/admin.php';
+require_once MTT_PLUGIN_DIR . 'includes/class-mtt-github-updater.php';
 
 Admin::boot();
 Plugin::instance();
+
+// Updates arrive through the native WordPress mechanism; the updater only
+// feeds the update_plugins transient.
+( new MTT_GitHub_Updater() )->register_hooks();

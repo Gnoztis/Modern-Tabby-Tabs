@@ -46,7 +46,7 @@ final class Admin {
 			handle: 'mrt-admin',
 			src:    Plugin::url( 'assets/css/admin.css' ),
 			deps:   [],
-			ver:    VERSION,
+			ver:    MTT_VERSION,
 		);
 	}
 
@@ -67,7 +67,7 @@ final class Admin {
 			args: [
 				'type'              => 'string',
 				'default'           => TitleElement::H2->value,
-				'sanitize_callback' => [ Plugin::class, 'sanitize_title_element' ],
+				'sanitize_callback' => [ \ModernTabby\Plugin::class, 'sanitize_title_element' ],
 			],
 		);
 
@@ -87,7 +87,7 @@ final class Admin {
 			args: [
 				'type'              => 'string',
 				'default'           => ThemeMode::Auto->value,
-				'sanitize_callback' => [ Plugin::class, 'sanitize_theme_mode' ],
+				'sanitize_callback' => [ \ModernTabby\Plugin::class, 'sanitize_theme_mode' ],
 			],
 		);
 
@@ -97,7 +97,7 @@ final class Admin {
 			args: [
 				'type'              => 'string',
 				'default'           => CssMode::File->value,
-				'sanitize_callback' => [ Plugin::class, 'sanitize_css_mode' ],
+				'sanitize_callback' => [ \ModernTabby\Plugin::class, 'sanitize_css_mode' ],
 			],
 		);
 
@@ -107,7 +107,7 @@ final class Admin {
 			args: [
 				'type'              => 'string',
 				'default'           => PanelStyle::Box->value,
-				'sanitize_callback' => [ Plugin::class, 'sanitize_panel_style' ],
+				'sanitize_callback' => [ \ModernTabby\Plugin::class, 'sanitize_panel_style' ],
 			],
 		);
 	}
@@ -130,7 +130,7 @@ final class Admin {
 			<div class="tabby-admin__grid">
 
 				<div class="card">
-					<h2><?php esc_html_e( 'Appearance', 'modern-tabby-tabs' ); ?></h2>
+					<h2><?php esc_html_e( 'Внешний вид', 'modern-tabby-tabs' ); ?></h2>
 
 					<form method="post" action="options.php">
 						<?php settings_fields( self::GROUP ); ?>
@@ -139,7 +139,7 @@ final class Admin {
 							<tr>
 								<th scope="row">
 									<label for="tabby-default-styles">
-										<?php esc_html_e( 'Default stylesheet', 'modern-tabby-tabs' ); ?>
+										<?php esc_html_e( 'Стандартные стили', 'modern-tabby-tabs' ); ?>
 									</label>
 								</th>
 								<td>
@@ -148,10 +148,10 @@ final class Admin {
 											id="tabby-default-styles"
 											name="<?php echo esc_attr( Plugin::OPT_DEFAULT_STYLES ); ?>"
 											value="1" <?php checked( 1, $default_styles ); ?> />
-										<?php esc_html_e( 'Load the plugin CSS on the front-end.', 'modern-tabby-tabs' ); ?>
+										<?php esc_html_e( 'Подключать CSS плагина на сайте.', 'modern-tabby-tabs' ); ?>
 									</label>
 									<p class="description">
-										<?php esc_html_e( 'Uncheck if you supply your own tab styles in a child theme.', 'modern-tabby-tabs' ); ?>
+										<?php esc_html_e( 'Снимите флажок, если задаёте свои стили табов в дочерней теме.', 'modern-tabby-tabs' ); ?>
 									</p>
 								</td>
 							</tr>
@@ -159,7 +159,7 @@ final class Admin {
 							<tr>
 								<th scope="row">
 									<label for="tabby-css-mode">
-										<?php esc_html_e( 'CSS delivery', 'modern-tabby-tabs' ); ?>
+										<?php esc_html_e( 'Доставка CSS', 'modern-tabby-tabs' ); ?>
 									</label>
 								</th>
 								<td>
@@ -177,7 +177,7 @@ final class Admin {
 							<tr>
 								<th scope="row">
 									<label for="tabby-theme-mode">
-										<?php esc_html_e( 'Colour scheme', 'modern-tabby-tabs' ); ?>
+										<?php esc_html_e( 'Цветовая схема', 'modern-tabby-tabs' ); ?>
 									</label>
 								</th>
 								<td>
@@ -195,7 +195,7 @@ final class Admin {
 							<tr>
 								<th scope="row">
 									<label for="tabby-panel-style">
-										<?php esc_html_e( 'Panel style', 'modern-tabby-tabs' ); ?>
+										<?php esc_html_e( 'Стиль панели', 'modern-tabby-tabs' ); ?>
 									</label>
 								</th>
 								<td>
@@ -208,7 +208,7 @@ final class Admin {
 										<?php endforeach; ?>
 									</select>
 									<p class="description">
-										<?php esc_html_e( 'Controls the box drawn around the tab content. Bordered box is the default. Flat blends the content with the page and is useful for long blocks such as IoCs, YARA rules and IDS signatures.', 'modern-tabby-tabs' ); ?>
+										<?php esc_html_e( 'Оформление блока вокруг содержимого таба. По умолчанию — рамка. «Плоский» сливает содержимое со страницей и подходит для длинных блоков: индикаторов компрометации, правил YARA, сигнатур IDS.', 'modern-tabby-tabs' ); ?>
 									</p>
 								</td>
 							</tr>
@@ -216,7 +216,7 @@ final class Admin {
 							<tr>
 								<th scope="row">
 									<label for="tabby-title-element">
-										<?php esc_html_e( 'Tab title element', 'modern-tabby-tabs' ); ?>
+										<?php esc_html_e( 'Элемент заголовка таба', 'modern-tabby-tabs' ); ?>
 									</label>
 								</th>
 								<td>
@@ -229,7 +229,7 @@ final class Admin {
 										<?php endforeach; ?>
 									</select>
 									<p class="description">
-										<?php esc_html_e( 'HTML element used for tab titles. Default: h2.', 'modern-tabby-tabs' ); ?>
+										<?php esc_html_e( 'HTML-элемент заголовка таба. По умолчанию: h2.', 'modern-tabby-tabs' ); ?>
 									</p>
 								</td>
 							</tr>
@@ -237,7 +237,7 @@ final class Admin {
 							<tr>
 								<th scope="row">
 									<label for="tabby-fa-style">
-										<?php esc_html_e( 'Font Awesome icon style', 'modern-tabby-tabs' ); ?>
+										<?php esc_html_e( 'Стиль иконок Font Awesome', 'modern-tabby-tabs' ); ?>
 									</label>
 								</th>
 								<td>
@@ -250,7 +250,7 @@ final class Admin {
 										<?php endforeach; ?>
 									</select>
 									<p class="description">
-										<?php esc_html_e( 'Font Awesome must be loaded separately (theme, plugin, or Customiser add-on).', 'modern-tabby-tabs' ); ?>
+										<?php esc_html_e( 'Font Awesome подключается отдельно: темой, плагином или дополнением для настроек.', 'modern-tabby-tabs' ); ?>
 									</p>
 								</td>
 							</tr>
@@ -261,13 +261,13 @@ final class Admin {
 				</div>
 
 				<div class="card">
-					<h2><?php esc_html_e( 'Usage', 'modern-tabby-tabs' ); ?></h2>
+					<h2><?php esc_html_e( 'Использование', 'modern-tabby-tabs' ); ?></h2>
 
 					<p>
 						<?php
 						printf(
 							/* translators: 1: [tabby], 2: [tabbyending] */
-							esc_html__( 'Use %1$s to open a tab, %2$s to close the group.', 'modern-tabby-tabs' ),
+							esc_html__( 'Открывает таб %1$s, закрывает группу %2$s.', 'modern-tabby-tabs' ),
 							'<code>[tabby]</code>',
 							'<code>[tabbyending]</code>'
 						);
@@ -275,22 +275,22 @@ final class Admin {
 					</p>
 
 					<p>
-						<?php esc_html_e( 'Leave a blank line above and below each shortcode so wpautop does not insert stray paragraph tags.', 'modern-tabby-tabs' ); ?>
+						<?php esc_html_e( 'Оставляйте пустую строку до и после каждого шорткода, чтобы wpautop не вставлял лишние теги абзацев.', 'modern-tabby-tabs' ); ?>
 					</p>
 
 <pre>
 [tabby title="First Tab"]
 
-<?php esc_html_e( 'Content of the first tab.', 'modern-tabby-tabs' ); ?>
+<?php esc_html_e( 'Содержимое первого таба.', 'modern-tabby-tabs' ); ?>
 
 [tabby title="Second Tab"]
 
-<?php esc_html_e( 'Content of the second tab.', 'modern-tabby-tabs' ); ?>
+<?php esc_html_e( 'Содержимое второго таба.', 'modern-tabby-tabs' ); ?>
 
 [tabbyending]</pre>
 
 					<p class="description">
-						<?php esc_html_e( 'Attributes: title, open="yes", icon, ico, class.', 'modern-tabby-tabs' ); ?>
+						<?php esc_html_e( 'Атрибуты: title, open="yes", icon, ico, class.', 'modern-tabby-tabs' ); ?>
 					</p>
 				</div>
 			</div>
