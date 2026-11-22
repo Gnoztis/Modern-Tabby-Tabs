@@ -118,17 +118,29 @@ final class MTT_GitHub_Updater {
 			$transient->response = [];
 		}
 
-		$basename = self::basename();
+		$basename  = self::basename();
+		$installed = $this->installed_version();
 
 		// Runs before the early returns: a dangling entry is a leftover of the
 		// previous key and must disappear even when GitHub is unreachable now.
 		$this->purge_stale_entries( $transient, $basename );
 
+		// The entry offers what is already on disk: drop it, so a phantom left
+		// by the request that installed the update disappears on this run.
+		$this->purge_installed_entry( $transient, $basename, $installed );
+
 		$release = $this->get_release();
 		if ( $release === null ) {
 			return $transient;
 		}
-		if ( version_compare( $release['version'], MTT_VERSION, '<=' ) ) {
+
+		// Inside the request that replaces the files the constant still holds
+		// the version loaded at request start, so the release must be newer
+		// than both the constant and the header on disk.
+		if ( ! version_compare( $release['version'], MTT_VERSION, '>' ) ) {
+			return $transient;
+		}
+		if ( ! version_compare( $release['version'], $installed, '>' ) ) {
 			return $transient;
 		}
 
@@ -184,6 +196,56 @@ final class MTT_GitHub_Updater {
 				unset( $transient->$bucket[ $key ] );
 			}
 		}
+	}
+
+	/**
+	 * Version of the plugin that is actually on disk.
+	 *
+	 * MTT_VERSION is defined when the main file loads: inside the request that
+	 * installs an update it still holds the previous version while the file on
+	 * disk already contains the new one. The header is the source of truth; the
+	 * constant is only a fallback for an unreadable file.
+	 *
+	 * Not cached on purpose: the value has to be re-read after the upgrader
+	 * replaces the files, and a per-request cache would keep the stale one.
+	 */
+	private function installed_version(): string {
+		$data = function_exists( 'get_file_data' )
+			? get_file_data( MTT_PLUGIN_FILE, [ 'Version' => 'Version' ], 'plugin' )
+			: [];
+
+		$version = isset( $data['Version'] ) ? trim( (string) $data['Version'] ) : '';
+
+		return $version === '' ? MTT_VERSION : $version;
+	}
+
+	/**
+	 * Drops our own response entry when it offers an already installed version.
+	 *
+	 * Core rewrites the update_plugins transient in the request that replaces
+	 * the files. An entry built there from the in-memory constant advertises
+	 * the version that has just been installed, so the site offers the same
+	 * update a second time; it would stay for up to twelve hours.
+	 *
+	 * @param mixed  $transient
+	 * @param string $basename  Our key in the transient.
+	 * @param string $installed Version from the plugin header on disk.
+	 */
+	private function purge_installed_entry( $transient, string $basename, string $installed ): void {
+		if ( ! isset( $transient->response[ $basename ] ) || ! is_object( $transient->response[ $basename ] ) ) {
+			return;
+		}
+
+		$entry   = $transient->response[ $basename ];
+		$offered = isset( $entry->new_version ) ? trim( (string) $entry->new_version ) : '';
+
+		if ( $offered !== '' && version_compare( $offered, $installed, '>' ) ) {
+			return;
+		}
+
+		// Not moved to no_update: a response-shaped entry carries a package URL,
+		// and core builds no_update itself.
+		unset( $transient->response[ $basename ] );
 	}
 
 	/**
@@ -300,6 +362,11 @@ final class MTT_GitHub_Updater {
 				return;
 			}
 		}
+
+		// The files and their headers have just been replaced: forget the
+		// parsed header values and the cached release check, so the next run
+		// does not advertise the version that is now installed.
+		self::$header = null;
 		$this->flush();
 	}
 
