@@ -2,9 +2,9 @@
 /**
  * Plugin Name:       Modern Tabby Tabs
  * Description:       Адаптивные табы и аккордеон на шорткодах. Чистый JS, поддержка тёмной темы.
- * Version:           1.4.6
+ * Version:           1.4.7
  * Requires at least: 7.0
- * Requires PHP:      8.4
+ * Requires PHP:      8.1
  * Tested up to:      7.1
  * Author:            Gnostis
  * Author URI:        https://github.com/Gnoztis
@@ -28,7 +28,7 @@ if ( ! defined( 'ABSPATH' ) ) {
  * Plugin constants. The version is declared once here and repeated only in the
  * plugin header above; both must match the release tag.
  */
-define( 'MTT_VERSION', '1.4.6' );
+define( 'MTT_VERSION', '1.4.7' );
 define( 'MTT_PLUGIN_FILE', __FILE__ );
 define( 'MTT_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 

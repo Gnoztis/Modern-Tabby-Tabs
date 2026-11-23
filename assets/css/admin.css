@@ -4,6 +4,15 @@
  * including dark ones, works out of the box.
  */
 
+/* WCAG 2.4.11: the fixed admin bar must not cover a focused control. */
+html {
+	scroll-padding-top: 46px;
+}
+
+.tabby-admin :is( a, button, input, select, textarea, summary ):focus {
+	scroll-margin-top: 46px;
+}
+
 .tabby-admin__grid {
 	display: grid;
 	grid-template-columns: repeat( auto-fit, minmax( 380px, 1fr ) );
