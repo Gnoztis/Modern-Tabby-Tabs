@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       Modern Tabby Tabs
  * Description:       Адаптивные табы и аккордеон на шорткодах. Чистый JS, поддержка тёмной темы.
- * Version:           1.4.1
+ * Version:           1.4.2
  * Requires at least: 7.0
  * Requires PHP:      8.4
  * Tested up to:      7.1
@@ -28,7 +28,7 @@ if ( ! defined( 'ABSPATH' ) ) {
  * Plugin constants. The version is declared once here and repeated only in the
  * plugin header above; both must match the release tag.
  */
-define( 'MTT_VERSION', '1.4.1' );
+define( 'MTT_VERSION', '1.4.2' );
 define( 'MTT_PLUGIN_FILE', __FILE__ );
 define( 'MTT_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 
@@ -574,6 +574,6 @@ require_once MTT_PLUGIN_DIR . 'includes/class-mtt-github-updater.php';
 Admin::boot();
 Plugin::instance();
 
-// Updates arrive through the native WordPress mechanism; the updater only
-// feeds the update_plugins transient.
-( new MTT_GitHub_Updater() )->register_hooks();
+// Updates arrive through the native WordPress mechanism; the updater is the
+// shared template generated into includes/ (global class, not namespaced).
+( new \MTT_GitHub_Updater() )->register_hooks();

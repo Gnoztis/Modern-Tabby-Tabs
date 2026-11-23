@@ -2,110 +2,94 @@
 /**
  * GitHub updater for Modern Tabby Tabs.
  *
- * @package ModernTabby
+ * GENERATED FILE — do not edit by hand.
+ * Source: tools/shared/updater/class-github-updater.php
+ * Regenerate: node tools/scripts/sync-updater.mjs modern-tabby-tabs
  */
-
-declare( strict_types = 1 );
-
-namespace ModernTabby;
-
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
 /**
- * Plugin updates through the native WordPress mechanism, sourced from the
- * GitHub releases and tags of Gnoztis/Modern-Tabby-Tabs.
+ * Plugin updates through the native WordPress mechanism; source — GitHub
+ * Releases and tags of the repository constant.
  *
- * The source of truth is the highest version found in the latest GitHub
- * release and in the tag list, whichever is newer: a tag can be published
- * without a matching release, and then the release alone would never offer an
- * update. WordPress sees the new version, shows it under Plugins and updates
- * from the package of the winning source. No third-party libraries and no
- * write requests to the repository.
- *
- * The key of the update_plugins entry is the runtime plugin_basename() of the
- * installed main file, never a constant: the plugin folder can be renamed by
- * a manual upload or by a GitHub zipball, and WordPress lists only entries
- * whose key matches an installed plugin file.
+ * The source of truth is the highest version of the GitHub Release and the
+ * newest vX.Y.Z tag: WordPress sees the new version, shows it under Plugins
+ * and updates from the package of the winning source.
+ * No third-party libraries and no write requests to the repository.
  */
 final class MTT_GitHub_Updater {
 
-	/** Repository that hosts the published versions. */
-	private const REPO = 'Gnoztis/Modern-Tabby-Tabs';
+	private const TRANSIENT       = 'mtt_github_release';
+	private const ERROR_TRANSIENT = 'mtt_github_release_error';
 
-	/** Plugin slug: archive naming only, never the update_plugins key. */
-	private const SLUG = 'modern-tabby-tabs';
-
-	/** Successful GitHub answer is cached for six hours. */
-	private const CACHE_TTL = 21600;
-
-	/** A completely failed check is retried after fifteen minutes. */
-	private const ERROR_TTL = 900;
-
-	private const UPDATE_TRANSIENT = 'mtt_github_release';
-
-	private const UPDATE_ERROR_TRANSIENT = 'mtt_github_release_error';
-
-	/** @var array{requires:string,requires_php:string,tested:string}|null */
 	private static ?array $header = null;
 
 	/**
-	 * Hooks the updater into the WordPress update pipeline.
+	 * Explicit user action, not a scheduled check: must not be answered from
+	 * the error backoff, which otherwise hides the fact that no request was
+	 * made at all.
 	 */
+	private static bool $force = false;
+
+	/**
+	 * Failure of the request in flight: ['code' => int, 'reason' => string,
+	 * 'at' => int]. The reason vocabulary lives in error_reason().
+	 *
+	 * @var array{code:int,reason:string,at:int}|null
+	 */
+	private ?array $last_error = null;
+
 	public function register_hooks(): void {
 		add_filter( 'pre_set_site_transient_update_plugins', [ $this, 'inject_update' ] );
-		add_filter( 'plugins_api', [ $this, 'plugin_info' ], 10, 3 );
-		add_filter( 'upgrader_source_selection', [ $this, 'rename_source' ], 10, 4 );
-		add_action( 'upgrader_process_complete', [ $this, 'after_upgrade' ], 10, 2 );
-		add_action( 'load-plugins.php', [ $this, 'maybe_force_check' ] );
+		add_filter( 'plugins_api',                           [ $this, 'plugin_info' ], 10, 3 );
+		add_filter( 'upgrader_source_selection',             [ $this, 'rename_source' ], 10, 4 );
+		add_action( 'upgrader_process_complete',             [ $this, 'after_upgrade' ], 10, 2 );
+		add_action( 'load-plugins.php',                      [ $this, 'maybe_force_check' ] );
+		add_action( 'admin_notices',                         [ $this, 'admin_notices' ] );
 		add_filter( 'plugin_action_links_' . self::basename(), [ $this, 'action_links' ] );
 	}
-
-	/* ============================================================
-	 *  Installed location
-	 * ============================================================ */
 
 	/**
 	 * Basename of the installed main plugin file, e.g.
 	 * "modern-tabby-tabs/modern-tabby-tabs.php".
 	 *
 	 * Computed at runtime, never taken from a constant: the folder is
-	 * whatever the site has. WordPress keys update_plugins->response by this
-	 * basename and counts every entry for the admin badge, but lists only
-	 * entries whose key matches a file from get_plugins() — so a hard-coded
-	 * key shows an "update available" badge with an empty update list.
+	 * whatever the site has. A GitHub zipball unpacks into
+	 * Gnoztis-Modern-Tabby-Tabs-<sha>, a manual upload can use any name.
+	 * WordPress keys update_plugins->response by this basename and counts
+	 * every entry for the admin badge, but lists only entries whose key
+	 * matches a file from get_plugins() — so a hard-coded key shows an
+	 * "update available" badge with an empty update list.
 	 */
 	public static function basename(): string {
 		$basename = plugin_basename( MTT_PLUGIN_FILE );
 
 		if ( $basename === '' ) {
-			// An empty result means the main file is not inside the plugin
-			// directory; fall back to the documented layout.
-			$basename = self::SLUG . '/' . wp_basename( MTT_PLUGIN_FILE );
+			// plugin_basename() returns the path relative to the plugin
+			// directory; an empty result means the main file was not inside
+			// it, so fall back to the documented layout.
+			$basename = 'modern-tabby-tabs' . '/' . wp_basename( MTT_PLUGIN_FILE );
 		}
 
 		return $basename;
 	}
 
-	/**
-	 * Folder name of the installed plugin, used for the "slug" field and for
-	 * matching the plugin information request. Falls back to SLUG when the
-	 * main file sits directly in the plugins directory.
-	 */
-	private static function dirname(): string {
-		$folder = dirname( self::basename() );
-
-		return ( $folder === '.' || $folder === '' ) ? self::SLUG : $folder;
-	}
-
 	/* ============================================================
-	 *  Update plumbing
+	 *  Updates
 	 * ============================================================ */
 
 	/**
-	 * Adds our entry to the update_plugins transient when GitHub has a newer
-	 * version than the installed one.
+	 * Adds our entry to the update_plugins transient when GitHub has a
+	 * release newer than the installed version.
+	 *
+	 * The comparison is made against both the version constant and the
+	 * header of the file on disk: inside the request that replaces the
+	 * files, core re-writes this transient while the constant still holds
+	 * the version loaded at the start of the request. Comparing only with
+	 * the constant would re-inject "2.5.0 -> 2.5.0" right after a
+	 * successful update, and the phantom entry would live up to 12 hours.
 	 *
 	 * @param mixed $transient
 	 * @return mixed
@@ -121,12 +105,13 @@ final class MTT_GitHub_Updater {
 		$basename  = self::basename();
 		$installed = $this->installed_version();
 
-		// Runs before the early returns: a dangling entry is a leftover of the
-		// previous key and must disappear even when GitHub is unreachable now.
+		// Runs before the early returns: a dangling entry is a leftover of
+		// the previous key and must disappear even when GitHub is
+		// unreachable right now.
 		$this->purge_stale_entries( $transient, $basename );
 
-		// The entry offers what is already on disk: drop it, so a phantom left
-		// by the request that installed the update disappears on this run.
+		// The entry offers what is already on disk: drop it, so a phantom
+		// left by an earlier run disappears on this one.
 		$this->purge_installed_entry( $transient, $basename, $installed );
 
 		$release = $this->get_release();
@@ -134,29 +119,26 @@ final class MTT_GitHub_Updater {
 			return $transient;
 		}
 
-		// Inside the request that replaces the files the constant still holds
-		// the version loaded at request start, so the release must be newer
-		// than both the constant and the header on disk.
-		if ( ! version_compare( $release['version'], MTT_VERSION, '>' ) ) {
-			return $transient;
-		}
-		if ( ! version_compare( $release['version'], $installed, '>' ) ) {
+		// Newer than the running code (constant) and than the files on
+		// disk (header), otherwise there is nothing to install.
+		if ( version_compare( $release['version'], MTT_VERSION, '<=' )
+			|| version_compare( $release['version'], $installed, '<=' ) ) {
 			return $transient;
 		}
 
 		$transient->response[ $basename ] = (object) [
 			'id'            => $basename,
-			'slug'          => self::dirname(),
+			'slug'          => 'modern-tabby-tabs',
 			'plugin'        => $basename,
 			'new_version'   => $release['version'],
-			'url'           => 'https://github.com/' . self::REPO,
+			'url'           => 'https://github.com/' . 'Gnoztis/Modern-Tabby-Tabs',
 			'package'       => $release['package'],
 			'tested'        => $release['tested'],
 			'requires'      => $release['requires'],
 			'requires_php'  => $release['requires_php'],
 			'icons'         => [],
 			'banners'       => [],
-			'compatibility' => new \stdClass(),
+			'compatibility' => new stdClass(),
 		];
 
 		if ( isset( $transient->no_update ) && is_array( $transient->no_update ) ) {
@@ -167,12 +149,61 @@ final class MTT_GitHub_Updater {
 	}
 
 	/**
+	 * Version of the main plugin file as it is on disk.
+	 *
+	 * Deliberately not cached in a static: the whole point is to see the
+	 * files after Plugin_Upgrader replaced them within the current request.
+	 * get_file_data() reads the first 8 KB of one file, so the cost is
+	 * negligible next to the transient write it guards.
+	 */
+	private function installed_version(): string {
+		$data = function_exists( 'get_file_data' )
+			? get_file_data( MTT_PLUGIN_FILE, [ 'Version' => 'Version' ], 'plugin' )
+			: [];
+
+		$version = isset( $data['Version'] ) ? trim( (string) $data['Version'] ) : '';
+
+		return $version !== '' ? $version : MTT_VERSION;
+	}
+
+	/**
+	 * Removes our own update entry when it offers what is already installed.
+	 *
+	 * Core compares the entry's new_version with the version from
+	 * get_plugins() and shows the row as an update anyway until the
+	 * transient is rebuilt, so the entry must not stay in response.
+	 *
+	 * @param mixed  $transient
+	 * @param string $basename Our key in the transient.
+	 * @param string $installed Version from the file on disk.
+	 */
+	private function purge_installed_entry( $transient, string $basename, string $installed ): void {
+		if ( ! isset( $transient->response[ $basename ] ) || ! is_object( $transient->response[ $basename ] ) ) {
+			return;
+		}
+
+		$entry   = $transient->response[ $basename ];
+		$offered = isset( $entry->new_version ) ? trim( (string) $entry->new_version ) : '';
+
+		if ( $offered === '' || version_compare( $offered, $installed, '<=' ) ) {
+			unset( $transient->response[ $basename ] );
+			return;
+		}
+
+		// Not newer than the constant either — the same phantom, seen from
+		// the other side.
+		if ( version_compare( $offered, MTT_VERSION, '<=' ) ) {
+			unset( $transient->response[ $basename ] );
+		}
+	}
+
+	/**
 	 * Drops update entries that point at our main file under a foreign key.
 	 *
-	 * Such entries are leftovers of a hard-coded basename or of a folder that
-	 * was renamed. They make the admin badge count an update that
-	 * get_plugin_updates() cannot list, because the key does not match any
-	 * installed plugin file.
+	 * Such entries are leftovers of the hard-coded basename this class used
+	 * before, or of a folder that was renamed. They make the admin badge
+	 * count an update that get_plugin_updates() cannot list, because the
+	 * key does not match any installed plugin file.
 	 *
 	 * @param mixed  $transient
 	 * @param string $basename Our real basename, kept as is.
@@ -199,68 +230,18 @@ final class MTT_GitHub_Updater {
 	}
 
 	/**
-	 * Version of the plugin that is actually on disk.
-	 *
-	 * MTT_VERSION is defined when the main file loads: inside the request that
-	 * installs an update it still holds the previous version while the file on
-	 * disk already contains the new one. The header is the source of truth; the
-	 * constant is only a fallback for an unreadable file.
-	 *
-	 * Not cached on purpose: the value has to be re-read after the upgrader
-	 * replaces the files, and a per-request cache would keep the stale one.
-	 */
-	private function installed_version(): string {
-		$data = function_exists( 'get_file_data' )
-			? get_file_data( MTT_PLUGIN_FILE, [ 'Version' => 'Version' ], 'plugin' )
-			: [];
-
-		$version = isset( $data['Version'] ) ? trim( (string) $data['Version'] ) : '';
-
-		return $version === '' ? MTT_VERSION : $version;
-	}
-
-	/**
-	 * Drops our own response entry when it offers an already installed version.
-	 *
-	 * Core rewrites the update_plugins transient in the request that replaces
-	 * the files. An entry built there from the in-memory constant advertises
-	 * the version that has just been installed, so the site offers the same
-	 * update a second time; it would stay for up to twelve hours.
-	 *
-	 * @param mixed  $transient
-	 * @param string $basename  Our key in the transient.
-	 * @param string $installed Version from the plugin header on disk.
-	 */
-	private function purge_installed_entry( $transient, string $basename, string $installed ): void {
-		if ( ! isset( $transient->response[ $basename ] ) || ! is_object( $transient->response[ $basename ] ) ) {
-			return;
-		}
-
-		$entry   = $transient->response[ $basename ];
-		$offered = isset( $entry->new_version ) ? trim( (string) $entry->new_version ) : '';
-
-		if ( $offered !== '' && version_compare( $offered, $installed, '>' ) ) {
-			return;
-		}
-
-		// Not moved to no_update: a response-shaped entry carries a package URL,
-		// and core builds no_update itself.
-		unset( $transient->response[ $basename ] );
-	}
-
-	/**
 	 * Data for the View plugin details modal.
 	 *
-	 * @param mixed  $result
+	 * @param mixed $result
 	 * @param string $action
-	 * @param mixed  $args
+	 * @param mixed $args
 	 * @return mixed
 	 */
 	public function plugin_info( $result, $action, $args ) {
 		if ( 'plugin_information' !== $action || ! is_object( $args ) || empty( $args->slug ) ) {
 			return $result;
 		}
-		if ( self::dirname() !== (string) $args->slug ) {
+		if ( 'modern-tabby-tabs' !== (string) $args->slug ) {
 			return $result;
 		}
 
@@ -273,17 +254,17 @@ final class MTT_GitHub_Updater {
 
 		return (object) [
 			'name'          => 'Modern Tabby Tabs',
-			'slug'          => self::dirname(),
+			'slug'          => 'modern-tabby-tabs',
 			'version'       => $release['version'],
-			'author'        => '<a href="https://github.com/Gnoztis">Gnostis</a>',
-			'homepage'      => 'https://github.com/' . self::REPO,
+			'author'        => '<a href="https://github.com/Gnoztis">Gnoztis</a>',
+			'homepage'      => 'https://github.com/' . 'Gnoztis/Modern-Tabby-Tabs',
 			'requires'      => $header['requires'],
 			'tested'        => $this->tested_version( $header['tested'] ),
 			'requires_php'  => $header['requires_php'],
 			'download_link' => $release['package'],
 			'last_updated'  => $release['published_at'],
 			'sections'      => [
-				'description' => __( 'Адаптивные табы и аккордеон на шорткодах: [tabby] и [tabbyending], настройки внешнего вида, режимы CSS-файла и инлайн-CSS, тёмная тема.', 'modern-tabby-tabs' ),
+				'description' => __( 'Адаптивные табы и аккордеон на шорткодах. Чистый JS, поддержка тёмной темы.', 'modern-tabby-tabs' ),
 				'changelog'   => $release['body'] !== '' ? wpautop( $release['body'] ) : __( 'Описание изменений в релизе не заполнено.', 'modern-tabby-tabs' ),
 			],
 		];
@@ -318,13 +299,14 @@ final class MTT_GitHub_Updater {
 			return $source;
 		}
 
-		// Rename the unpacked directory to the folder the site actually uses,
-		// not to the slug: the update has to replace the installed directory,
-		// otherwise WordPress ends up with two copies of the plugin.
+		// Rename the unpacked directory to the folder the site actually
+		// uses, not to the slug: the update has to replace the installed
+		// directory, otherwise WordPress ends up with two copies of the
+		// plugin (one of them inactive).
 		$folder = dirname( self::basename() );
 		if ( $folder === '.' || $folder === '' ) {
-			// The main file sits directly in the plugins directory, so there
-			// is no directory to rename.
+			// The main file sits directly in the plugins directory, so
+			// there is no directory to rename.
 			return $source;
 		}
 
@@ -350,11 +332,8 @@ final class MTT_GitHub_Updater {
 	}
 
 	/**
-	 * Reset the update-check cache after an upgrade so the site does not keep
-	 * advertising the version it has just installed.
-	 *
-	 * @param mixed $upgrader
-	 * @param array $hook_extra
+	 * Reset the update-check cache after an upgrade so we do not keep
+	 * advertising an update for the version just installed.
 	 */
 	public function after_upgrade( $upgrader = null, $hook_extra = [] ): void {
 		if ( is_array( $hook_extra ) && ! empty( $hook_extra['plugins'] ) && is_array( $hook_extra['plugins'] ) ) {
@@ -362,12 +341,71 @@ final class MTT_GitHub_Updater {
 				return;
 			}
 		}
-
-		// The files and their headers have just been replaced: forget the
-		// parsed header values and the cached release check, so the next run
-		// does not advertise the version that is now installed.
-		self::$header = null;
 		$this->flush();
+	}
+
+	/**
+	 * Update state for the /me diagnostics.
+	 *
+	 * Answers "why does the admin show an update badge with nothing to
+	 * update?" in one request: the real basename, and the entry the
+	 * update_plugins transient holds for our main file — including the key
+	 * it sits under, which is where a mismatch shows up.
+	 *
+	 * @return array{plugin_basename:string,transient_entry:bool,transient_key:string,new_version:string,package:string,last_error:array{code:int,reason:string,at:int}|null,next_retry_in:int,token_configured:bool}
+	 */
+	public static function diagnostic(): array {
+		$basename = self::basename();
+
+		$out = [
+			'plugin_basename'  => $basename,
+			'transient_entry'  => false,
+			'transient_key'    => '',
+			'new_version'      => '',
+			'package'          => '',
+			'last_error'       => self::saved_error(),
+			'next_retry_in'    => self::retry_in(),
+			'token_configured' => '' !== self::token(),
+		];
+
+		$transient = get_site_transient( 'update_plugins' );
+		if ( ! is_object( $transient ) || ! isset( $transient->response ) || ! is_array( $transient->response ) ) {
+			return $out;
+		}
+
+		$entry = null;
+		$key   = '';
+
+		if ( isset( $transient->response[ $basename ] ) && is_object( $transient->response[ $basename ] ) ) {
+			$entry = $transient->response[ $basename ];
+			$key   = $basename;
+		} else {
+			// No entry under our key: report a dangling one, if any, so the
+			// badge/list mismatch is visible directly.
+			$main = wp_basename( MTT_PLUGIN_FILE );
+			foreach ( $transient->response as $candidate_key => $candidate ) {
+				if ( ! is_object( $candidate ) || empty( $candidate->plugin ) ) {
+					continue;
+				}
+				if ( wp_basename( (string) $candidate->plugin ) !== $main ) {
+					continue;
+				}
+				$entry = $candidate;
+				$key   = (string) $candidate_key;
+				break;
+			}
+		}
+
+		if ( ! is_object( $entry ) ) {
+			return $out;
+		}
+
+		$out['transient_entry'] = true;
+		$out['transient_key']   = $key;
+		$out['new_version']     = isset( $entry->new_version ) ? (string) $entry->new_version : '';
+		$out['package']         = isset( $entry->package ) ? (string) $entry->package : '';
+
+		return $out;
 	}
 
 	/**
@@ -386,17 +424,55 @@ final class MTT_GitHub_Updater {
 			'mtt_force_check'
 		);
 
-		$links              = (array) $links;
+		$links = (array) $links;
+
+		// The last check failed: say so, otherwise "no update" and "the check
+		// crashed" look exactly the same in the plugin row.
+		$error = self::saved_error();
+		if ( null !== $error ) {
+			$links['mtt_state'] = '<span class="mtt-check-failed" style="color:#b32d2e">'
+				. esc_html( self::error_label( $error ) )
+				. '</span>';
+		}
+
 		$links['mtt_check'] = '<a href="' . esc_url( $url ) . '">' . esc_html__( 'Проверить обновления', 'modern-tabby-tabs' ) . '</a>';
 
 		return $links;
 	}
 
 	/**
+	 * Explains a failed check on the Plugins screen.
+	 *
+	 * Without it the failure is invisible: WordPress only shows "no updates",
+	 * and an exhausted GitHub quota looks like a plugin without releases.
+	 */
+	public function admin_notices(): void {
+		if ( ! current_user_can( 'update_plugins' ) ) {
+			return;
+		}
+
+		$screen = function_exists( 'get_current_screen' ) ? get_current_screen() : null;
+		if ( ! $screen || 'plugins' !== $screen->id ) {
+			return;
+		}
+
+		$error = self::saved_error();
+		if ( null === $error ) {
+			return;
+		}
+
+		printf(
+			'<div class="notice notice-warning"><p><strong>%s</strong> %s %s</p></div>',
+			esc_html__( 'Modern Tabby Tabs: проверка обновлений не удалась.', 'modern-tabby-tabs' ),
+			esc_html( self::error_label( $error ) . '.' ),
+			esc_html( self::error_hint( $error ) )
+		);
+	}
+
+	/**
 	 * Handles the Check for updates click on plugins.php.
 	 */
 	public function maybe_force_check(): void {
-		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- nonce is verified below.
 		if ( ! isset( $_GET['mtt-force-check'] ) ) {
 			return;
 		}
@@ -404,6 +480,10 @@ final class MTT_GitHub_Updater {
 			return;
 		}
 		check_admin_referer( 'mtt_force_check' );
+
+		// The click is an explicit request for a fresh check: ignore and drop
+		// the error backoff, then flush the caches and ask GitHub again.
+		self::$force = true;
 
 		$this->flush();
 
@@ -416,10 +496,18 @@ final class MTT_GitHub_Updater {
 		exit;
 	}
 
+	/**
+	 * Drops every cached value of this class.
+	 *
+	 * Called after an upgrade, so the next run does not reuse the release
+	 * data (and the header values) read before the files were replaced.
+	 */
 	private function flush(): void {
-		delete_transient( self::UPDATE_TRANSIENT );
-		delete_transient( self::UPDATE_ERROR_TRANSIENT );
+		delete_transient( self::TRANSIENT );
+		delete_transient( self::ERROR_TRANSIENT );
 		delete_site_transient( 'update_plugins' );
+
+		self::$header = null;
 	}
 
 	/* ============================================================
@@ -428,45 +516,59 @@ final class MTT_GitHub_Updater {
 
 	/**
 	 * Latest version data (6 hour cache, 15 minute error cache).
-	 *
-	 * @return array<string,mixed>|null
 	 */
 	private function get_release(): ?array {
-		$cached = get_transient( self::UPDATE_TRANSIENT );
+		$cached = get_transient( self::TRANSIENT );
 		if ( is_array( $cached ) && isset( $cached['version'], $cached['package'] ) ) {
 			return $cached;
 		}
 
-		if ( get_transient( self::UPDATE_ERROR_TRANSIENT ) ) {
+		// An explicit force-check is not answered from the backoff: the user
+		// asked for a request, and a cached failure must not fake an answer.
+		if ( ! self::$force && null !== self::saved_error() ) {
 			return null;
 		}
 
-		$release = $this->fetch_latest();
+		$this->last_error = null;
+		$release          = $this->fetch_release();
 
 		if ( $release === null ) {
-			set_transient( self::UPDATE_ERROR_TRANSIENT, 1, self::ERROR_TTL );
+			$error = $this->last_error ?? [
+				'code'   => 404,
+				'reason' => 'not_found',
+				'at'     => time(),
+			];
+
+			set_transient( self::ERROR_TRANSIENT, $error, 900 );
+
 			return null;
 		}
 
-		set_transient( self::UPDATE_TRANSIENT, $release, self::CACHE_TTL );
+		// A success clears the backoff: the next scheduled check may run again.
+		delete_transient( self::ERROR_TRANSIENT );
+		set_transient( self::TRANSIENT, $release, 21600 );
 
 		return $release;
 	}
 
 	/**
-	 * Picks the higher of the two sources.
+	 * Latest version data: the highest version of both sources.
 	 *
-	 * Both requests are always made: a repository can keep an older release
-	 * while a newer tag already exists, and "release first, otherwise tag"
-	 * would never offer that tag. On equal versions the release wins, because
-	 * it carries the release notes.
+	 * Both sources are always queried (the winner is cached as a whole).
+	 * Taking the release and using the tag only when there is no release
+	 * hides a fresh tag behind an older GitHub Release: the repository
+	 * keeps release 1.6.3, the owner pushes tag 1.7.0, and the update is
+	 * never offered until a release is created by hand.
 	 *
-	 * @return array<string,mixed>|null
+	 * Equal versions: the release wins, it carries the changelog.
 	 */
-	private function fetch_latest(): ?array {
+	private function fetch_release(): ?array {
 		$release = $this->fetch_latest_release();
 		$tag     = $this->fetch_latest_tag();
 
+		if ( $release === null && $tag === null ) {
+			return null;
+		}
 		if ( $release === null ) {
 			return $tag;
 		}
@@ -477,14 +579,8 @@ final class MTT_GitHub_Updater {
 		return version_compare( $tag['version'], $release['version'], '>' ) ? $tag : $release;
 	}
 
-	/**
-	 * Candidate from the latest GitHub release, with the package of that
-	 * release.
-	 *
-	 * @return array<string,mixed>|null
-	 */
 	private function fetch_latest_release(): ?array {
-		$body = $this->api_get( sprintf( 'https://api.github.com/repos/%s/releases/latest', self::REPO ) );
+		$body = $this->api_get( sprintf( 'https://api.github.com/repos/%s/releases/latest', 'Gnoztis/Modern-Tabby-Tabs' ) );
 		if ( $body === null ) {
 			return null;
 		}
@@ -508,12 +604,14 @@ final class MTT_GitHub_Updater {
 	}
 
 	/**
-	 * Candidate from the tag list: the highest semver tag and its zipball.
-	 *
-	 * @return array<string,mixed>|null
+	 * Highest semver tag of the repository. Competes with the release in
+	 * fetch_release(); a tag without a GitHub Release is a normal case.
 	 */
 	private function fetch_latest_tag(): ?array {
-		$tags = $this->api_get( sprintf( 'https://api.github.com/repos/%s/tags?per_page=30', self::REPO ) );
+		$tags = $this->api_get(
+			sprintf( 'https://api.github.com/repos/%s/tags?per_page=30', 'Gnoztis/Modern-Tabby-Tabs' )
+		);
+
 		if ( ! is_array( $tags ) ) {
 			return null;
 		}
@@ -542,7 +640,7 @@ final class MTT_GitHub_Updater {
 		$package = $this->safe_package_url(
 			sprintf(
 				'https://api.github.com/repos/%s/zipball/%s',
-				self::REPO,
+				'Gnoztis/Modern-Tabby-Tabs',
 				rawurlencode( $best_tag )
 			)
 		);
@@ -555,13 +653,10 @@ final class MTT_GitHub_Updater {
 	}
 
 	/**
-	 * Normalises a GitHub answer into the shape the update pipeline expects.
-	 *
 	 * @param string $version
 	 * @param string $package
 	 * @param string $body
 	 * @param string $published_at
-	 * @return array<string,mixed>
 	 */
 	private function build_release( string $version, string $package, string $body, string $published_at ): array {
 		$header = $this->header_data();
@@ -580,16 +675,16 @@ final class MTT_GitHub_Updater {
 	/**
 	 * "Tested up to" turned into the value WordPress compares with.
 	 *
-	 * The header holds a branch claim ("7.1"), while the update screen compares
-	 * the stored value with the full running version ("7.1.5"):
-	 * `version_compare( $update->tested, $cur_wp_version, '>=' )`. A branch
-	 * claim is always lower than a patch release, which is why a bare "7.1"
-	 * still renders "Compatibility with WordPress 7.1.5: Not tested".
+	 * The header holds a branch claim ("7.1"), while the update screen
+	 * compares the stored value with the full running version ("7.1.5"):
+	 * version_compare( $update->tested, $cur_wp_version, '>=' ). A branch
+	 * claim is always lower than a patch release, so a bare "7.1" still
+	 * renders "Compatibility with WordPress 7.1.5: Not tested".
 	 *
 	 * api.wordpress.org resolves this by serving the patch release of the
 	 * declared branch: readmes say "Tested up to: 7.1" and the API answers
-	 * "7.1.5". The same expansion is done here, so the claim covers the running
-	 * patch release of the branch the author declared.
+	 * "7.1.5". The same expansion is done here, so the claim covers the
+	 * running patch release of the branch the author declared.
 	 *
 	 * @param string $tested Header value, e.g. "7.1"; empty when absent.
 	 * @return string Empty when the header is absent, otherwise a version.
@@ -628,43 +723,201 @@ final class MTT_GitHub_Updater {
 	/**
 	 * GET to the GitHub API with our User-Agent and an optional token.
 	 *
+	 * Failures are recorded in $last_error instead of being flattened to null:
+	 * a 403 rate limit, a 404 tag and a dead network need different advice.
+	 * A 404 is deliberately not recorded — for releases/latest "no release"
+	 * is a normal answer and the tag list may still provide the update.
+	 *
 	 * @return array<string,mixed>|null
 	 */
 	private function api_get( string $url ): ?array {
-		$args = [
+		// The token is attached only to GitHub hosts: the URL comes from the
+		// repository constant, never from user input.
+		$host  = strtolower( (string) wp_parse_url( $url, PHP_URL_HOST ) );
+		$args  = [
 			'timeout'     => 5,
 			'redirection' => 2,
 			'headers'     => [
 				'Accept'       => 'application/vnd.github+json',
-				'User-Agent'   => self::SLUG . '/' . MTT_VERSION,
+				'User-Agent'   => 'Modern-Tabby-Tabs/' . MTT_VERSION,
 				'Content-Type' => 'application/json',
 			],
 		];
 
-		$token = $this->token();
-		if ( $token !== '' ) {
+		$token = self::token();
+		if ( '' !== $token && ( 'api.github.com' === $host || 'github.com' === $host ) ) {
 			$args['headers']['Authorization'] = 'Bearer ' . $token;
 		}
 
-		// The URL is built from the repository constant, not from user input;
-		// scheme and host of the answer are validated separately.
-		$response = wp_remote_get( $url, $args ); // phpcs:ignore -- URL built from a constant.
+		// The URL is built from the repository constant, not from user
+		// input; scheme and host of the answer are validated separately.
+		$response = wp_remote_get( $url, $args ); // phpcs:ignore -- URL built from the repository constant; scheme and host are validated below.
+
 		if ( is_wp_error( $response ) ) {
+			$this->last_error = [
+				'code'   => 0,
+				'reason' => 'network',
+				'at'     => time(),
+			];
 			return null;
 		}
-		if ( 200 !== (int) wp_remote_retrieve_response_code( $response ) ) {
+
+		$code = (int) wp_remote_retrieve_response_code( $response );
+
+		if ( 200 !== $code ) {
+			if ( 404 !== $code ) {
+				$this->last_error = [
+					'code'   => $code,
+					'reason' => self::error_reason( $code, $response ),
+					'at'     => time(),
+				];
+			}
 			return null;
 		}
 
 		$body = json_decode( (string) wp_remote_retrieve_body( $response ), true );
 
-		return is_array( $body ) ? $body : null;
+		if ( ! is_array( $body ) ) {
+			$this->last_error = [
+				'code'   => $code,
+				'reason' => 'invalid',
+				'at'     => time(),
+			];
+			return null;
+		}
+
+		return $body;
+	}
+
+	/**
+	 * Why the request failed, in the vocabulary used by the admin notice.
+	 *
+	 * @param int              $code     HTTP status.
+	 * @param array<string,mixed>|WP_Error $response Raw response.
+	 */
+	private static function error_reason( int $code, $response ): string {
+		if ( 429 === $code ) {
+			return 'rate_limit';
+		}
+
+		if ( 403 === $code ) {
+			// GitHub reports an exhausted quota as a 403 with a zero
+			// remaining counter; a plain 403 means the token lacks access.
+			$remaining = '';
+			if ( ! is_wp_error( $response ) ) {
+				$remaining = (string) wp_remote_retrieve_header( $response, 'x-ratelimit-remaining' );
+			}
+
+			return '' === trim( $remaining ) || '0' === trim( $remaining ) ? 'rate_limit' : 'unauthorized';
+		}
+
+		if ( 404 === $code ) {
+			return 'not_found';
+		}
+
+		if ( 401 === $code ) {
+			return 'unauthorized';
+		}
+
+		return 'invalid';
+	}
+
+	/**
+	 * Saved failure of the last check, or null when the last check succeeded.
+	 *
+	 * Before 2.6.2 this transient held a bare `1`, so a rate limit, a missing
+	 * tag and a dead network were indistinguishable. An old-style value may
+	 * still be in the cache right after the upgrade; it is reported as
+	 * "unknown" rather than ignored.
+	 *
+	 * @return array{code:int,reason:string,at:int}|null
+	 */
+	private static function saved_error(): ?array {
+		$error = get_transient( self::ERROR_TRANSIENT );
+
+		if ( is_array( $error ) && isset( $error['reason'] ) ) {
+			return [
+				'code'   => (int) ( $error['code'] ?? 0 ),
+				'reason' => (string) $error['reason'],
+				'at'     => (int) ( $error['at'] ?? 0 ),
+			];
+		}
+
+		if ( $error ) {
+			return [
+				'code'   => 0,
+				'reason' => 'unknown',
+				'at'     => 0,
+			];
+		}
+
+		return null;
+	}
+
+	/**
+	 * Seconds until the failed check may be retried; 0 when there is none.
+	 */
+	private static function retry_in(): int {
+		$error = self::saved_error();
+
+		if ( null === $error || $error['at'] <= 0 ) {
+			return 0;
+		}
+
+		return max( 0, $error['at'] + (int) 900 - time() );
+	}
+
+	/**
+	 * Human readable form of a failure, e.g. "проверка не удалась: 403
+	 * (лимит GitHub API)".
+	 *
+	 * @param array{code:int,reason:string,at:int} $error
+	 */
+	private static function error_label( array $error ): string {
+		$reasons = [
+			'rate_limit'   => __( 'лимит GitHub API', 'modern-tabby-tabs' ),
+			'not_found'    => __( 'репозиторий или тег не найдены', 'modern-tabby-tabs' ),
+			'unauthorized' => __( 'токен отклонён', 'modern-tabby-tabs' ),
+			'network'      => __( 'нет связи с GitHub', 'modern-tabby-tabs' ),
+			'invalid'      => __( 'неожиданный ответ GitHub', 'modern-tabby-tabs' ),
+			'unknown'      => __( 'неизвестная ошибка', 'modern-tabby-tabs' ),
+		];
+
+		$reason = $reasons[ $error['reason'] ] ?? $reasons['unknown'];
+		$code   = $error['code'] > 0 ? (string) $error['code'] : '—';
+
+		return sprintf(
+			/* translators: 1: HTTP status or a dash, 2: failure reason */
+			__( 'проверка не удалась: %1$s (%2$s)', 'modern-tabby-tabs' ),
+			$code,
+			$reason
+		);
+	}
+
+	/**
+	 * What to do about a failure.
+	 *
+	 * @param array{code:int,reason:string,at:int} $error
+	 */
+	private static function error_hint( array $error ): string {
+		switch ( $error['reason'] ) {
+			case 'rate_limit':
+				return __( 'Задайте MTT_GITHUB_TOKEN в wp-config.php: без токена GitHub разрешает 60 запросов в час на IP, с токеном — 5000.', 'modern-tabby-tabs' );
+			case 'not_found':
+				return __( 'Проверьте, что тег вида vX.Y.Z существует в репозитории и репозиторий доступен без авторизации.', 'modern-tabby-tabs' );
+			case 'unauthorized':
+				return __( 'Проверьте MTT_GITHUB_TOKEN: токен должен иметь доступ на чтение публичного репозитория.', 'modern-tabby-tabs' );
+			case 'network':
+				return __( 'Хостинг не смог открыть api.github.com: проверьте исходящие запросы и DNS.', 'modern-tabby-tabs' );
+			default:
+				return __( 'Повторите проверку позже; если ошибка повторяется, посмотрите ответ api.github.com.', 'modern-tabby-tabs' );
+		}
 	}
 
 	/**
 	 * Archive URL: the release zip asset first, then the GitHub zipball.
 	 *
-	 * @param array<string,mixed> $body
+	 * @param array $body
 	 */
 	private function find_package( array $body ): string {
 		if ( ! empty( $body['assets'] ) && is_array( $body['assets'] ) ) {
@@ -691,8 +944,8 @@ final class MTT_GitHub_Updater {
 	}
 
 	/**
-	 * HTTPS only and GitHub hosts only — the package must not come from a
-	 * field a third-party service could tamper with.
+	 * HTTPS only and GitHub hosts only — the package must not come
+	 * from a field a third-party service could tamper with.
 	 */
 	private function safe_package_url( string $url ): string {
 		$url = esc_url_raw( trim( $url ) );
@@ -715,10 +968,6 @@ final class MTT_GitHub_Updater {
 		return $url;
 	}
 
-	/**
-	 * Strict semver: v1.2, 1.2.3 and v1.2.3 are accepted; pre-releases and
-	 * four-part versions are rejected.
-	 */
 	private function normalize_version( string $tag ): string {
 		$tag = trim( $tag );
 		if ( ! preg_match( '/^v?(\d+\.\d+(?:\.\d+)?)$/', $tag, $m ) ) {
@@ -728,22 +977,27 @@ final class MTT_GitHub_Updater {
 	}
 
 	/**
-	 * GitHub token from wp-config.php or a filter, for API rate limits.
+	 * Personal access token for the GitHub API, if the site provides one.
+	 *
+	 * Optional: a public repository needs no token, but the anonymous quota is
+	 * 60 requests per hour per IP, and several plugins behind one hosting IP
+	 * exhaust it. The value is never printed — diagnostic() only reports
+	 * whether it is configured.
 	 */
-	private function token(): string {
+	private static function token(): string {
 		$token = defined( 'MTT_GITHUB_TOKEN' ) ? (string) MTT_GITHUB_TOKEN : '';
 		$token = (string) apply_filters( 'mtt_github_token', $token );
-
 		return trim( $token );
 	}
 
 	/**
-	 * Requires / Requires PHP / Tested up to from the plugin header.
+	 * Version headers of the plugin file.
 	 *
-	 * "Tested up to" is a separate field: WordPress compares it with its own
-	 * version on the update screen, while "Requires at least" is the minimum
-	 * supported version. An absent header yields an empty string, never a
-	 * copy of another field.
+	 * `Tested up to` and `Requires at least` are different things: the
+	 * first is the newest WordPress the plugin was checked against, the
+	 * second is the oldest it runs on. Feeding the minimum into `tested`
+	 * makes the update screen show "compatibility: unknown", so they are
+	 * read separately and `tested` stays empty when the header is absent.
 	 *
 	 * @return array{requires:string,requires_php:string,tested:string}
 	 */
