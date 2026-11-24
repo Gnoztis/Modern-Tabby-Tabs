@@ -96,7 +96,7 @@ final class Admin {
 			option_name:  Plugin::OPT_CSS_MODE,
 			args: [
 				'type'              => 'string',
-				'default'           => CssMode::File->value,
+				'default'           => CssMode::Inline->value,
 				'sanitize_callback' => [ \ModernTabby\Plugin::class, 'sanitize_css_mode' ],
 			],
 		);
@@ -121,7 +121,7 @@ final class Admin {
 		$title_element  = TitleElement::fromOption( get_option( Plugin::OPT_TITLE_ELEMENT, 'h2' ) )->value;
 		$fa_style       = FaStyle::fromOption( get_option( Plugin::OPT_FA_STYLE, 'regular' ) )->value;
 		$theme_mode     = ThemeMode::fromOption( get_option( Plugin::OPT_THEME_MODE, ThemeMode::Auto->value ) )->value;
-		$css_mode       = CssMode::fromOption( get_option( Plugin::OPT_CSS_MODE, CssMode::File->value ) )->value;
+		$css_mode       = CssMode::fromOption( get_option( Plugin::OPT_CSS_MODE, CssMode::Inline->value ) )->value;
 		$panel_style    = PanelStyle::fromOption( get_option( Plugin::OPT_PANEL_STYLE, PanelStyle::Box->value ) )->value;
 		?>
 		<div class="wrap tabby-admin">

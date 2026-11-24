@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       Modern Tabby Tabs
  * Description:       Адаптивные табы и аккордеон на шорткодах. Чистый JS, поддержка тёмной темы.
- * Version:           1.4.9
+ * Version:           1.5.0
  * Requires at least: 7.0
  * Requires PHP:      8.1
  * Tested up to:      7.1
@@ -28,7 +28,7 @@ if ( ! defined( 'ABSPATH' ) ) {
  * Plugin constants. The version is declared once here and repeated only in the
  * plugin header above; both must match the release tag.
  */
-define( 'MTT_VERSION', '1.4.9' );
+define( 'MTT_VERSION', '1.5.0' );
 define( 'MTT_PLUGIN_FILE', __FILE__ );
 define( 'MTT_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 
@@ -141,16 +141,16 @@ enum CssMode: string {
 
 	public static function fromOption( mixed $value ): self {
 		if ( ! is_string( $value ) ) {
-			return self::File;
+			return self::Inline;
 		}
-		return self::tryFrom( $value ) ?? self::File;
+		return self::tryFrom( $value ) ?? self::Inline;
 	}
 
 	/** @return array<string,string> */
 	public static function options(): array {
 		return [
-			self::File->value   => __( 'Отдельный файл — кэшируется, рекомендуется для сайта', 'modern-tabby-tabs' ),
-			self::Inline->value => __( 'Инлайн — внутри <head>, без отдельного запроса',       'modern-tabby-tabs' ),
+			self::Inline->value => __( 'Инлайн — встроен в страницу, по умолчанию',    'modern-tabby-tabs' ),
+			self::File->value   => __( 'Отдельный файл — для отладки, лишний запрос',  'modern-tabby-tabs' ),
 		];
 	}
 }
@@ -260,9 +260,13 @@ final class Plugin {
 	 * ------------------------------------------------------------------- */
 
 	public function register_assets(): void {
+		// Empty handles: the actual CSS/JS is attached with wp_add_inline_*()
+		// only on pages that use the shortcode, so the plugin never emits a
+		// separate stylesheet or script request. The File CSS mode registers
+		// its own handle when selected.
 		wp_register_style(
 			'mrt-tabs-print',
-			self::url( 'assets/css/tabs-print.css' ),
+			false,
 			[],
 			self::asset_version( 'assets/css/tabs-print.css' ),
 			'print',
@@ -270,10 +274,10 @@ final class Plugin {
 
 		wp_register_script(
 			handle: 'mrt-tabs',
-			src:    self::url( 'assets/js/tabs.js' ),
+			src:    false,
 			deps:   [],
 			ver:    self::asset_version( 'assets/js/tabs.js' ),
-			args:   [ 'in_footer' => true, 'strategy' => 'defer' ],
+			args:   [ 'in_footer' => true ],
 		);
 	}
 
@@ -294,19 +298,37 @@ final class Plugin {
 
 	private function enqueue_assets(): void {
 		if ( 1 === (int) get_option( self::OPT_DEFAULT_STYLES, 1 ) ) {
-			$mode = CssMode::fromOption( get_option( self::OPT_CSS_MODE, CssMode::File->value ) );
+			$mode = CssMode::fromOption( get_option( self::OPT_CSS_MODE, CssMode::Inline->value ) );
 
-			if ( $mode === CssMode::Inline ) {
-				$this->enqueue_css_inline();
-			} else {
+			if ( $mode === CssMode::File ) {
 				$this->enqueue_css_file();
+			} else {
+				$this->enqueue_css_inline();
 			}
 		}
 
-		wp_enqueue_style( 'mrt-tabs-print' );
-		wp_enqueue_script( 'mrt-tabs' );
+		$this->enqueue_print_inline();
+		$this->enqueue_js_inline();
 
 		do_action( 'mrt_enqueue_assets' );
+	}
+
+	private function enqueue_print_inline(): void {
+		wp_enqueue_style( 'mrt-tabs-print' );
+
+		$css = $this->read_asset( 'assets/css/tabs-print.css' );
+		if ( $css !== '' ) {
+			wp_add_inline_style( 'mrt-tabs-print', $css );
+		}
+	}
+
+	private function enqueue_js_inline(): void {
+		wp_enqueue_script( 'mrt-tabs' );
+
+		$js = $this->read_asset( 'assets/js/tabs.js' );
+		if ( $js !== '' ) {
+			wp_add_inline_script( 'mrt-tabs', $js, 'after' );
+		}
 	}
 
 	private function enqueue_css_file(): void {
@@ -328,13 +350,13 @@ final class Plugin {
 		);
 		wp_enqueue_style( 'mrt-tabs' );
 
-		$css = $this->read_css( 'assets/css/tabs.css' );
+		$css = $this->read_asset( 'assets/css/tabs.css' );
 		if ( $css !== '' ) {
 			wp_add_inline_style( 'mrt-tabs', $css );
 		}
 	}
 
-	private function read_css( string $relative_path ): string {
+	private function read_asset( string $relative_path ): string {
 		$file = __DIR__ . '/' . ltrim( $relative_path, '/' );
 		if ( ! is_readable( $file ) ) {
 			return '';
